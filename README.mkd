@@ -15,6 +15,7 @@ Usage
 		# Defaults to sending all statsd (100%). 
 		statsd_sample_rate 10; # 10% of requests
 
+
 		server {
 			listen 80;
 			server_name www.your.domain.com;
@@ -24,7 +25,7 @@ Usage
 
 			location / {
 				
-				# Increment the key by 1 when this location is hit.
+				<span style="color: #ccc;"># Increment the key by 1 when this location is hit.</span>
 				statsd_count "your_product.pages.index_requests" 1;
 
 				# Increment the key by 1, but only if $request_completion is set to something.
@@ -39,6 +40,7 @@ Usage
 				# the custom header exists in the upstream response.
 				statsd_count "your_product.custom_$upstream_http_x_some_custom_header" 1 
 					"$upstream_http_x_some_custom_header";
+
 
 				proxy_pass http://some.other.domain.com;
 			}

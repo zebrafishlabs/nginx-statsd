@@ -1,3 +1,13 @@
+/*
+ * nginx-statsd module
+ * Copyright (C) 2012 Zebrafish Labs Inc.
+ *
+ * Much of this source code was derived from nginx-udplog-module which
+ * has the following copyright. Please refer to the LICENSE file for
+ * details.
+ *
+ * Copyright (C) 2010 Valery Kholodkov
+*/
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>

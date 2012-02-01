@@ -40,7 +40,6 @@ This is how to use the nginx-statsd module:
 				statsd_count "your_product.custom_$upstream_http_x_some_custom_header" 1 
 					"$upstream_http_x_some_custom_header";
 
-
 				proxy_pass http://some.other.domain.com;
 			}
 		}

@@ -8,7 +8,7 @@ Usage
 
 	http {
 		
-		# Set the server that you want to send stats to.
+		*# Set the server that you want to send stats to.*
 		statsd_server your.statsd.server.com;
 
 		# Randomly sample 10% of requests so that you do not overwhelm your statsd server.

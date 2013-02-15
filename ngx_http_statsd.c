@@ -381,7 +381,7 @@ ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
     uc = l->udp_connection;
     if (uc->connection == NULL) {
 
-	uc->log = *l->log;
+        uc->log = *l->log;
         uc->log.handler = NULL;
         uc->log.data = NULL;
         uc->log.action = "logging";

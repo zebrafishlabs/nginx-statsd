@@ -32,6 +32,7 @@ typedef ngx_peer_addr_t ngx_statsd_addr_t;
 typedef struct {
     ngx_statsd_addr_t         peer_addr;
     ngx_udp_connection_t      *udp_connection;
+    ngx_log_t                 *log;
 } ngx_udp_endpoint_t;
 
 typedef struct {
@@ -344,16 +345,8 @@ static ngx_int_t ngx_statsd_init_endpoint(ngx_conf_t *cf, ngx_udp_endpoint_t *en
     uc->sockaddr = endpoint->peer_addr.sockaddr;
     uc->socklen = endpoint->peer_addr.socklen;
     uc->server = endpoint->peer_addr.name;
-#if defined nginx_version && ( nginx_version >= 7054 && nginx_version < 8032 )
-    uc->log = &cf->cycle->new_log;
-#else
-    uc->log = cf->cycle->new_log;
-#if defined nginx_version && nginx_version >= 8032
-    uc->log.handler = NULL;
-    uc->log.data = NULL;
-    uc->log.action = "logging";
-#endif
-#endif
+
+    endpoint->log = &cf->cycle->new_log;
 
     return NGX_OK;
 }
@@ -387,6 +380,12 @@ ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
 
     uc = l->udp_connection;
     if (uc->connection == NULL) {
+
+        uc->log = *l->log;
+        uc->log.handler = NULL;
+        uc->log.data = NULL;
+        uc->log.action = "logging";
+
         if(ngx_udp_connect(uc) != NGX_OK) {
             if(uc->connection != NULL) {
                 ngx_free_connection(uc->connection);

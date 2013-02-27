@@ -288,7 +288,7 @@ ngx_http_statsd_handler(ngx_http_request_t *r)
 		len = s.len;
 		len += sizeof(":") - 1;
 		len += NGX_INT_T_LEN;
-		len += sizeof("|c@0.00") - 1;
+		len += sizeof("|c|@0.00") - 1;
 
 		if (line_len < len) {
         	// Redimension buffer.
@@ -305,7 +305,7 @@ ngx_http_statsd_handler(ngx_http_request_t *r)
 
 		if (stat.type == STATSD_TYPE_COUNTER) {
 			if (ulcf->sample_rate < 100) {
-				p = ngx_sprintf(line, "%V:%d|c@0.%02d", &s, n, ulcf->sample_rate);
+				p = ngx_sprintf(line, "%V:%d|c|@0.%02d", &s, n, ulcf->sample_rate);
 			} else {
 				p = ngx_sprintf(line, "%V:%d|c", &s, n);
 			}

@@ -18,6 +18,9 @@
 #define STATSD_TYPE_COUNTER	0x0001
 #define STATSD_TYPE_TIMING  0x0002
 
+/* Maximum 64-bit number: -9223372036854775807 (20 characters) */
+#define STATSD_MAX_INT_STR 20
+
 #define ngx_conf_merge_ptr_value(conf, prev, default)            		\
  	if (conf == NGX_CONF_UNSET_PTR) {                               	\
         conf = (prev == NGX_CONF_UNSET_PTR) ? default : prev;           \
@@ -288,7 +291,7 @@ ngx_http_statsd_handler(ngx_http_request_t *r)
 
 		len = s.len;
 		len += sizeof(":") - 1;
-		len += NGX_INT_T_LEN;
+		len += STATSD_MAX_INT_STR;
 		len += sizeof("|c|@0.00") - 1;
 
 		if (line_len < len) {

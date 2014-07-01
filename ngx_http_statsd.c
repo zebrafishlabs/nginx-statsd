@@ -18,8 +18,7 @@
 #define STATSD_TYPE_COUNTER	0x0001
 #define STATSD_TYPE_TIMING  0x0002
 
-/* Maximum 64-bit number: -9223372036854775807 (20 characters) */
-#define STATSD_MAX_INT_STR 20
+#define STATSD_MAX_STR 256
 
 #define ngx_conf_merge_ptr_value(conf, prev, default)            		\
  	if (conf == NGX_CONF_UNSET_PTR) {                               	\
@@ -236,9 +235,8 @@ ngx_http_statsd_valid_value(ngx_str_t *value)
 ngx_int_t
 ngx_http_statsd_handler(ngx_http_request_t *r)
 {
-    u_char                   *line, *p;
-	uint					  line_len;
-    size_t                    len;
+    u_char                    line[STATSD_MAX_STR], *p;
+    const char *              metric_type;
     ngx_http_statsd_conf_t   *ulcf;
 	ngx_statsd_stat_t 		 *stats;
 	ngx_statsd_stat_t		  stat;
@@ -263,16 +261,6 @@ ngx_http_statsd_handler(ngx_http_request_t *r)
 		return NGX_OK;
 	}
 
-	line_len = 100;
-#if defined nginx_version && nginx_version >= 7003
-	line = ngx_pnalloc(r->pool, line_len);
-#else
-	line = ngx_palloc(r->pool, line_len);
-#endif
-	if (line == NULL) {
-		return NGX_ERROR;
-	}
-
 	stats = ulcf->stats->elts;
 	for (c = 0; c < ulcf->stats->nelts; c++) {
 
@@ -289,33 +277,20 @@ ngx_http_statsd_handler(ngx_http_request_t *r)
          	continue;
 		};
 
-		len = s.len;
-		len += sizeof(":") - 1;
-		len += STATSD_MAX_INT_STR;
-		len += sizeof("|c|@0.00") - 1;
-
-		if (line_len < len) {
-        	// Redimension buffer.
-			line_len = len;
-#if defined nginx_version && nginx_version >= 7003
-			line = ngx_pnalloc(r->pool, line_len);
-#else
-			line = ngx_palloc(r->pool, line_len);
-#endif
-			if (line == NULL) {
-				return NGX_ERROR;
-			};
-		};
-
 		if (stat.type == STATSD_TYPE_COUNTER) {
-			if (ulcf->sample_rate < 100) {
-				p = ngx_sprintf(line, "%V:%d|c|@0.%02d", &s, n, ulcf->sample_rate);
-			} else {
-				p = ngx_sprintf(line, "%V:%d|c", &s, n);
-			}
-			ngx_http_statsd_udp_send(ulcf->endpoint, line, p - line);
+			metric_type = "c";
 		} else if (stat.type == STATSD_TYPE_TIMING) {
-			p = ngx_sprintf(line, "%V:%d|ms", &s, n);
+			metric_type = "ms";
+		} else {
+			metric_type = NULL;
+		}
+
+		if (metric_type) {
+			if (ulcf->sample_rate < 100) {
+				p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|%s|@0.%02d", &s, n, metric_type, ulcf->sample_rate);
+			} else {
+				p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|%s", &s, n, metric_type);
+			}
 			ngx_http_statsd_udp_send(ulcf->endpoint, line, p - line);
 		}
 	}

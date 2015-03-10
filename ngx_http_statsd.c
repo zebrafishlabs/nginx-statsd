@@ -195,7 +195,13 @@ ngx_http_statsd_metric_value(ngx_str_t *value)
     	return (ngx_uint_t) -1;
 	};
 
-	/* Hack to convert milliseconds to a number. */
+	/*
+	 * Hack to convert a float into an integer.
+	 *
+	 * For values like $response_time, nginx reports them as a
+	 * float in seconds with millisecond precision. e.g. 1.519,
+	 * but statsd requires an integer to be sent.
+	 */
 	if (value->len > 4 && value->data[value->len - 4] == '.') {
 		n = ngx_atoi(value->data, value->len - 4);
 		m = ngx_atoi(value->data + (value->len - 3), 3);

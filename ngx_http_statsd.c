@@ -7,7 +7,7 @@
  * details.
  *
  * Copyright (C) 2010 Valery Kholodkov
-*/
+ */
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -183,6 +183,7 @@ static ngx_str_t ngx_http_statsd_key_value(ngx_str_t *value) {
   return *value;
 };
 
+// added to provide string value of set metric
 static ngx_str_t ngx_http_statsd_set_get_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv, ngx_str_t v) {
   ngx_str_t val;
   if (cv == NULL) {
@@ -196,7 +197,7 @@ static ngx_str_t ngx_http_statsd_set_get_value(ngx_http_request_t *r, ngx_http_c
   return ngx_http_statsd_key_value(&val);
 };
 
-
+// added to provide string value of set metric
 static ngx_str_t ngx_http_statsd_set_value(ngx_str_t *value) {
   return *value;
 };
@@ -294,7 +295,7 @@ ngx_int_t ngx_http_statsd_handler(ngx_http_request_t *r) {
     set = ngx_http_statsd_set_get_value(r, stat.cmetric_str, stat.metric_str);
 
     if (b == 0 || s.len == 0 || ( n <= 0 && set.len == 0 )) {
-      // Do not log if not valid, key is invalid, or valud is lte 0.
+      // Do not log if not valid, key is invalid, or value is less than 0.
       ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "statsd: no value to send");
       continue;
     };
@@ -312,6 +313,7 @@ ngx_int_t ngx_http_statsd_handler(ngx_http_request_t *r) {
 
     if (metric_type) {
       if (stat.type == STATSD_TYPE_SET) {
+        // handle a set
         if (ulcf->sample_rate < 100) {
           p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%V|s|@0.%02d", &s, &set, ulcf->sample_rate);
         } else {
@@ -319,6 +321,7 @@ ngx_int_t ngx_http_statsd_handler(ngx_http_request_t *r) {
         }
         ngx_http_statsd_udp_send(ulcf->endpoint, line, p - line);
       } else {
+        // handle all other requests
         if (ulcf->sample_rate < 100) {
           p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|%s|@0.%02d", &s, n, metric_type, ulcf->sample_rate);
         } else {

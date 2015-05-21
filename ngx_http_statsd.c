@@ -167,7 +167,6 @@ ngx_module_t ngx_http_statsd_module = {
 };
 
 static ngx_str_t ngx_http_statsd_key_get_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv, ngx_str_t v) {
-  fprintf(stderr, "ngx_http_statsd_key_get_value\n");
   ngx_str_t val;
   if (cv == NULL) {
     return v;
@@ -181,12 +180,10 @@ static ngx_str_t ngx_http_statsd_key_get_value(ngx_http_request_t *r, ngx_http_c
 };
 
 static ngx_str_t ngx_http_statsd_key_value(ngx_str_t *value) {
-  fprintf(stderr, "ngx_http_statsd_key_value\n");
   return *value;
 };
 
 static ngx_str_t ngx_http_statsd_set_get_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv, ngx_str_t v) {
-  fprintf(stderr, "ngx_http_statsd_set_get_value\n");
   ngx_str_t val;
   if (cv == NULL) {
     return v;
@@ -201,12 +198,10 @@ static ngx_str_t ngx_http_statsd_set_get_value(ngx_http_request_t *r, ngx_http_c
 
 
 static ngx_str_t ngx_http_statsd_set_value(ngx_str_t *value) {
-  fprintf(stderr, "ngx_http_statsd_set_value\n");
   return *value;
 };
 
 static ngx_uint_t ngx_http_statsd_metric_get_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv, ngx_uint_t v) {
-  fprintf(stderr, "ngx_http_statsd_metric_get_value\n");
   ngx_str_t val;
   if (cv == NULL) {
     return v;
@@ -220,7 +215,6 @@ static ngx_uint_t ngx_http_statsd_metric_get_value(ngx_http_request_t *r, ngx_ht
 };
 
 static ngx_uint_t ngx_http_statsd_metric_value(ngx_str_t *value) {
-  fprintf(stderr, "ngx_http_statsd_metric_value\n");
   ngx_int_t n, m;
 
   if (value->len == 1 && value->data[0] == '-') {
@@ -231,8 +225,8 @@ static ngx_uint_t ngx_http_statsd_metric_value(ngx_str_t *value) {
   if (value->len > 4 && value->data[value->len - 4] == '.') {
     n = ngx_atoi(value->data, value->len - 4);
     m = ngx_atoi(value->data + (value->len - 3), 3);
-    return (ngx_uint_t) ((n * 1000) + m);
 
+    return (ngx_uint_t) ((n * 1000) + m);
   } else {
     n = ngx_atoi(value->data, value->len);
     if (n > 0) {
@@ -244,7 +238,6 @@ static ngx_uint_t ngx_http_statsd_metric_value(ngx_str_t *value) {
 };
 
 static ngx_flag_t ngx_http_statsd_valid_get_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv, ngx_flag_t v) {
-  fprintf(stderr, "ngx_http_statsd_valid_get_value\n");
   ngx_str_t val;
   if (cv == NULL) {
     return v;
@@ -258,12 +251,10 @@ static ngx_flag_t ngx_http_statsd_valid_get_value(ngx_http_request_t *r, ngx_htt
 };
 
 static ngx_flag_t ngx_http_statsd_valid_value(ngx_str_t *value) {
-  fprintf(stderr, "ngx_http_statsd_valid_value\n");
   return (ngx_flag_t) (value->len > 0 ? 1 : 0);
 };
 
 ngx_int_t ngx_http_statsd_handler(ngx_http_request_t *r) {
-  fprintf(stderr, "ngx_http_statsd_handler:start\n");
   u_char                  line[STATSD_MAX_STR], *p;
   const char              *metric_type;
   ngx_http_statsd_conf_t  *ulcf;
@@ -292,67 +283,42 @@ ngx_int_t ngx_http_statsd_handler(ngx_http_request_t *r) {
 
   stats = ulcf->stats->elts;
 
-  fprintf(stderr, "ngx_http_statsd_handler:start:for_loop\n");
-  int i = 0;
   for (c = 0; c < ulcf->stats->nelts; c++) {
-    fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:%d\n", i++);
 
     stat = stats[c];
     s = ngx_http_statsd_key_get_value(r, stat.ckey, stat.key);
-
     ngx_escape_statsd_key(s.data, s.data, s.len);
 
-    fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:before\n");
-
     n = ngx_http_statsd_metric_get_value(r, stat.cmetric, stat.metric);
-
-    fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:middle\n");
-
     b = ngx_http_statsd_valid_get_value(r, stat.cvalid, stat.valid);
-
-    fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:after\n");
-
     set = ngx_http_statsd_set_get_value(r, stat.cmetric_str, stat.metric_str);
 
     if (b == 0 || s.len == 0 || ( n <= 0 && set.len == 0 )) {
-      fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:BAIL\n");
       // Do not log if not valid, key is invalid, or valud is lte 0.
       ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "statsd: no value to send");
       continue;
     };
 
-    fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:before_if_statement\n");
 
     if (stat.type == STATSD_TYPE_COUNTER) {
-      fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:type_counter\n");
-      metric_type = "c";
+          metric_type = "c";
     } else if (stat.type == STATSD_TYPE_TIMING) {
-      fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:type_timing\n");
-      metric_type = "ms";
+          metric_type = "ms";
     } else if (stat.type == STATSD_TYPE_SET) {
-      fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:type_set\n");
-      metric_type = "s";
+          metric_type = "s";
     } else {
-      fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:type_null\n");
-      metric_type = NULL;
+          metric_type = NULL;
     }
-    fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:after_type_set:start\n");
 
     if (metric_type) {
       if (stat.type == STATSD_TYPE_SET) {
-        fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:after_type_set:TYPE_SET\n");
         if (ulcf->sample_rate < 100) {
-          fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:after_type_set:TYPE_SET:sample_rate:before\n");
           p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%s|s|@0.%02d", &s, set, ulcf->sample_rate);
-          fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:after_type_set:TYPE_SET:sample_rate:after\n");
         } else {
-          fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:after_type_set:TYPE_SET:non_sample_rate:before\n");
           p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|s", &s, set);
-          fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:after_type_set:TYPE_SET:non_sample_rate:after\n");
         }
         ngx_http_statsd_udp_send(ulcf->endpoint, line, p - line);
       } else {
-        fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:after_type_set:TYPE_OTHER\n");
         if (ulcf->sample_rate < 100) {
           p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|%s|@0.%02d", &s, n, metric_type, ulcf->sample_rate);
         } else {
@@ -361,18 +327,14 @@ ngx_int_t ngx_http_statsd_handler(ngx_http_request_t *r) {
         ngx_http_statsd_udp_send(ulcf->endpoint, line, p - line);
       }
     }
-    fprintf(stderr, "ngx_http_statsd_handler:start:for_loop:after_type_set:stop\n");
-  }
-  fprintf(stderr, "ngx_http_statsd_handler:stop:for_loop\n");
+    }
 
 
-  fprintf(stderr, "ngx_http_statsd_handler:stop\n");
 
   return NGX_OK;
 }
 
 static ngx_int_t ngx_statsd_init_endpoint(ngx_conf_t *cf, ngx_udp_endpoint_t *endpoint) {
-  fprintf(stderr, "ngx_statsd_init_endpoint\n");
   ngx_pool_cleanup_t    *cln;
   ngx_udp_connection_t  *uc;
 
@@ -403,7 +365,6 @@ static ngx_int_t ngx_statsd_init_endpoint(ngx_conf_t *cf, ngx_udp_endpoint_t *en
 }
 
 static void ngx_statsd_updater_cleanup(void *data) {
-  fprintf(stderr, "ngx_statsd_updater_cleanup\n");
   ngx_udp_endpoint_t  *e = data;
 
   ngx_log_debug0(NGX_LOG_DEBUG_CORE, ngx_cycle->log, 0, "cleanup statsd_updater");
@@ -419,7 +380,6 @@ static void ngx_statsd_updater_cleanup(void *data) {
 static void ngx_http_statsd_udp_dummy_handler(ngx_event_t *ev) {}
 
 static ngx_int_t ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len) {
-  fprintf(stderr, "ngx_http_statsd_udp_send\n");
   ssize_t                n;
   ngx_udp_connection_t  *uc;
 
@@ -463,7 +423,6 @@ ngx_log_error(NGX_LOG_CRIT, uc->log, 0, "send() incomplete");
 }
 
 static void *ngx_http_statsd_create_main_conf(ngx_conf_t *cf) {
-  fprintf(stderr, "ngx_http_statsd_create_main_conf\n");
   ngx_http_statsd_main_conf_t  *conf;
 
   conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_statsd_main_conf_t));
@@ -475,7 +434,6 @@ static void *ngx_http_statsd_create_main_conf(ngx_conf_t *cf) {
 }
 
 static void *ngx_http_statsd_create_loc_conf(ngx_conf_t *cf) {
-  fprintf(stderr, "ngx_http_statsd_create_loc_conf\n");
   ngx_http_statsd_conf_t  *conf;
 
   conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_statsd_conf_t));
@@ -491,7 +449,6 @@ static void *ngx_http_statsd_create_loc_conf(ngx_conf_t *cf) {
 }
 
 static char *ngx_http_statsd_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
-  fprintf(stderr, "ngx_http_statsd_merge_loc_conf:start\n");
   ngx_http_statsd_conf_t  *prev = parent;
   ngx_http_statsd_conf_t  *conf = child;
   ngx_statsd_stat_t       *stat;
@@ -511,7 +468,6 @@ static char *ngx_http_statsd_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
       return NGX_CONF_ERROR;
     }
   }
-  fprintf(stderr, "ngx_http_statsd_merge_loc_conf:middle:merge_loop\n");
   if (prev->stats != NULL) {
     prev_stats = prev->stats->elts;
     for (i = 0; i < prev->stats->nelts; i++) {
@@ -529,12 +485,10 @@ static char *ngx_http_statsd_merge_loc_conf(ngx_conf_t *cf, void *parent, void *
       stat->cvalid = prev_stat.cvalid;
     };
   };
-  fprintf(stderr, "ngx_http_statsd_merge_loc_conf:stop\n");
   return NGX_CONF_OK;
 }
 
 static ngx_udp_endpoint_t *ngx_http_statsd_add_endpoint(ngx_conf_t *cf, ngx_statsd_addr_t *peer_addr) {
-  fprintf(stderr, "ngx_http_statsd_add_endpoint\n");
   ngx_http_statsd_main_conf_t    *umcf;
   ngx_udp_endpoint_t             *endpoint;
 
@@ -559,7 +513,6 @@ static ngx_udp_endpoint_t *ngx_http_statsd_add_endpoint(ngx_conf_t *cf, ngx_stat
 }
 
 static char *ngx_http_statsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-  fprintf(stderr, "ngx_http_statsd_set_server\n");
   ngx_http_statsd_conf_t      *ulcf = conf;
   ngx_str_t                   *value;
   ngx_url_t                    u;
@@ -593,7 +546,6 @@ static char *ngx_http_statsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void
 }
 
 static char *ngx_http_statsd_add_stat(ngx_conf_t *cf, ngx_command_t *cmd, void *conf, ngx_uint_t type) {
-  fprintf(stderr, "ngx_http_statsd_add_stat\n");
   ngx_http_statsd_conf_t              *ulcf = conf;
   ngx_http_complex_value_t            key_cv;
   ngx_http_compile_complex_value_t    key_ccv;
@@ -709,22 +661,18 @@ static char *ngx_http_statsd_add_stat(ngx_conf_t *cf, ngx_command_t *cmd, void *
 }
 
 static char *ngx_http_statsd_add_count(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-  fprintf(stderr, "ngx_http_statsd_add_count\n");
   return ngx_http_statsd_add_stat(cf, cmd, conf, STATSD_TYPE_COUNTER);
 }
 
 static char *ngx_http_statsd_add_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-  fprintf(stderr, "ngx_http_statsd_add_set\n");
   return ngx_http_statsd_add_stat(cf, cmd, conf, STATSD_TYPE_SET);
 }
 
 static char *ngx_http_statsd_add_timing(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-  fprintf(stderr, "ngx_http_statsd_add_timing\n");
   return ngx_http_statsd_add_stat(cf, cmd, conf, STATSD_TYPE_TIMING);
 }
 
 static ngx_int_t ngx_http_statsd_init(ngx_conf_t *cf) {
-  fprintf(stderr, "ngx_http_statsd_init\n");
   ngx_int_t                     rc;
   ngx_uint_t                    i;
   ngx_http_core_main_conf_t     *cmcf;
@@ -757,7 +705,6 @@ static ngx_int_t ngx_http_statsd_init(ngx_conf_t *cf) {
 }
 
 uintptr_t ngx_escape_statsd_key(u_char *dst, u_char *src, size_t size) {
-  fprintf(stderr, "ngx_escape_statsd_key\n");
   ngx_uint_t      n;
   uint32_t       *escape;
   /* " ", "#", """, "%", "'", %00-%1F, %7F-%FF */

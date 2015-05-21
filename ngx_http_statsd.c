@@ -313,9 +313,9 @@ ngx_int_t ngx_http_statsd_handler(ngx_http_request_t *r) {
     if (metric_type) {
       if (stat.type == STATSD_TYPE_SET) {
         if (ulcf->sample_rate < 100) {
-          p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%s|s|@0.%02d", &s, set, ulcf->sample_rate);
+          p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%V|s|@0.%02d", &s, &set, ulcf->sample_rate);
         } else {
-          p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|s", &s, set);
+          p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%V|s", &s, &set);
         }
         ngx_http_statsd_udp_send(ulcf->endpoint, line, p - line);
       } else {

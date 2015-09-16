@@ -3,6 +3,16 @@ nginx-statsd
 
 An nginx module for sending statistics to statsd.
 
+# Installation
+
+Configure your nginx/openresty from source with:
+
+`./configure --add-module=/path/to/nginx-statsd-source`
+
+..compile it with `make` and install with `make install`.
+
+# Usage
+
 This is how to use the nginx-statsd module:
 
 	http {
@@ -11,7 +21,7 @@ This is how to use the nginx-statsd module:
 		statsd_server your.statsd.server.com;
 
 		# Randomly sample 10% of requests so that you do not overwhelm your statsd server.
-		# Defaults to sending all statsd (100%). 
+		# Defaults to sending all statsd (100%).
 		statsd_sample_rate 10; # 10% of requests
 
 

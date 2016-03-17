@@ -33,7 +33,7 @@ typedef ngx_peer_addr_t ngx_statsd_addr_t;
 
 typedef struct {
     ngx_statsd_addr_t         peer_addr;
-    ngx_udp_connection_t      *udp_connection;
+    ngx_resolver_connection_t *udp_connection;
     ngx_log_t                 *log;
 } ngx_udp_endpoint_t;
 
@@ -60,7 +60,7 @@ typedef struct {
 	ngx_array_t				*stats;
 } ngx_http_statsd_conf_t;
 
-ngx_int_t ngx_udp_connect(ngx_udp_connection_t *uc);
+ngx_int_t ngx_udp_connect(ngx_resolver_connection_t *rec);
 
 static void ngx_statsd_updater_cleanup(void *data);
 static ngx_int_t ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len);
@@ -166,7 +166,7 @@ ngx_http_statsd_key_get_value(ngx_http_request_t *r, ngx_http_complex_value_t *c
 };
 
 static ngx_str_t
-ngx_http_statsd_key_value(ngx_str_t *value) 
+ngx_http_statsd_key_value(ngx_str_t *value)
 {
 	return *value;
 };
@@ -187,7 +187,7 @@ ngx_http_statsd_metric_get_value(ngx_http_request_t *r, ngx_http_complex_value_t
 };
 
 static ngx_uint_t
-ngx_http_statsd_metric_value(ngx_str_t *value) 
+ngx_http_statsd_metric_value(ngx_str_t *value)
 {
 	ngx_int_t n, m;
 
@@ -199,8 +199,8 @@ ngx_http_statsd_metric_value(ngx_str_t *value)
 	if (value->len > 4 && value->data[value->len - 4] == '.') {
 		n = ngx_atoi(value->data, value->len - 4);
 		m = ngx_atoi(value->data + (value->len - 3), 3);
-		return (ngx_uint_t) ((n * 1000) + m); 
-    	
+		return (ngx_uint_t) ((n * 1000) + m);
+
 	} else {
 		n = ngx_atoi(value->data, value->len);
 		if (n > 0) {
@@ -227,7 +227,7 @@ ngx_http_statsd_valid_get_value(ngx_http_request_t *r, ngx_http_complex_value_t 
 };
 
 static ngx_flag_t
-ngx_http_statsd_valid_value(ngx_str_t *value) 
+ngx_http_statsd_valid_value(ngx_str_t *value)
 {
 	return (ngx_flag_t) (value->len > 0 ? 1 : 0);
 };
@@ -272,7 +272,7 @@ ngx_http_statsd_handler(ngx_http_request_t *r)
 		b = ngx_http_statsd_valid_get_value(r, stat.cvalid, stat.valid);
 
 		if (b == 0 || s.len == 0 || n <= 0) {
-			// Do not log if not valid, key is invalid, or valud is lte 0. 
+			// Do not log if not valid, key is invalid, or valud is lte 0.
 			ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "statsd: no value to send");
          	continue;
 		};
@@ -300,7 +300,7 @@ ngx_http_statsd_handler(ngx_http_request_t *r)
 
 static ngx_int_t ngx_statsd_init_endpoint(ngx_conf_t *cf, ngx_udp_endpoint_t *endpoint) {
     ngx_pool_cleanup_t    *cln;
-    ngx_udp_connection_t  *uc;
+    ngx_resolver_connection_t  *rec;
 
 	ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cf->log, 0,
 			   "statsd: initting endpoint");
@@ -313,16 +313,16 @@ static ngx_int_t ngx_statsd_init_endpoint(ngx_conf_t *cf, ngx_udp_endpoint_t *en
     cln->handler = ngx_statsd_updater_cleanup;
     cln->data = endpoint;
 
-    uc = ngx_calloc(sizeof(ngx_udp_connection_t), cf->log);
-    if (uc == NULL) {
+    rec = ngx_calloc(sizeof(ngx_resolver_connection_t), cf->log);
+    if (rec == NULL) {
         return NGX_ERROR;
     }
 
-    endpoint->udp_connection = uc;
+    endpoint->udp_connection = rec;
 
-    uc->sockaddr = endpoint->peer_addr.sockaddr;
-    uc->socklen = endpoint->peer_addr.socklen;
-    uc->server = endpoint->peer_addr.name;
+    rec->sockaddr = endpoint->peer_addr.sockaddr;
+    rec->socklen = endpoint->peer_addr.socklen;
+    rec->server = endpoint->peer_addr.name;
 
     endpoint->log = &cf->cycle->new_log;
 
@@ -338,8 +338,8 @@ ngx_statsd_updater_cleanup(void *data)
                    "cleanup statsd_updater");
 
     if(e->udp_connection) {
-        if(e->udp_connection->connection) {
-            ngx_close_connection(e->udp_connection->connection);
+        if(e->udp_connection->udp) {
+            ngx_close_connection(e->udp_connection->udp);
         }
 
         ngx_free(e->udp_connection);
@@ -354,31 +354,31 @@ static ngx_int_t
 ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
 {
     ssize_t                n;
-    ngx_udp_connection_t  *uc;
+    ngx_resolver_connection_t  *rec;
 
-    uc = l->udp_connection;
-    if (uc->connection == NULL) {
+    rec = l->udp_connection;
+    if (rec->udp == NULL) {
 
-        uc->log = *l->log;
-        uc->log.handler = NULL;
-        uc->log.data = NULL;
-        uc->log.action = "logging";
+        rec->log = *l->log;
+        rec->log.handler = NULL;
+        rec->log.data = NULL;
+        rec->log.action = "logging";
 
-        if(ngx_udp_connect(uc) != NGX_OK) {
-            if(uc->connection != NULL) {
-                ngx_free_connection(uc->connection);
-                uc->connection = NULL;
+        if(ngx_udp_connect(rec) != NGX_OK) {
+            if(rec->udp != NULL) {
+                ngx_free_connection(rec->udp);
+                rec->udp = NULL;
             }
 
             return NGX_ERROR;
         }
 
-        uc->connection->data = l;
-        uc->connection->read->handler = ngx_http_statsd_udp_dummy_handler;
-        uc->connection->read->resolver = 0;
+        rec->udp->data = l;
+        rec->udp->read->handler = ngx_http_statsd_udp_dummy_handler;
+        rec->udp->read->resolver = 0;
     }
 
-    n = ngx_send(uc->connection, buf, len);
+    n = ngx_send(rec->udp, buf, len);
 
     if (n == -1) {
         return NGX_ERROR;
@@ -386,9 +386,9 @@ ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
 
     if ((size_t) n != (size_t) len) {
 #if defined nginx_version && nginx_version >= 8032
-        ngx_log_error(NGX_LOG_CRIT, &uc->log, 0, "send() incomplete");
+        ngx_log_error(NGX_LOG_CRIT, &rec->log, 0, "send() incomplete");
 #else
-        ngx_log_error(NGX_LOG_CRIT, uc->log, 0, "send() incomplete");
+        ngx_log_error(NGX_LOG_CRIT, rec->log, 0, "send() incomplete");
 #endif
         return NGX_ERROR;
     }
@@ -443,11 +443,11 @@ ngx_http_statsd_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
 	if (conf->stats == NULL) {
 		sz = (prev->stats != NULL ? prev->stats->nelts : 2);
-		conf->stats = ngx_array_create(cf->pool, sz, sizeof(ngx_statsd_stat_t)); 
+		conf->stats = ngx_array_create(cf->pool, sz, sizeof(ngx_statsd_stat_t));
 		if (conf->stats == NULL) {
         	return NGX_CONF_ERROR;
 		}
-	} 
+	}
 	if (prev->stats != NULL) {
 		prev_stats = prev->stats->elts;
 		for (i = 0; i < prev->stats->nelts; i++) {
@@ -636,7 +636,7 @@ ngx_http_statsd_add_stat(ngx_conf_t *cf, ngx_command_t *cmd, void *conf, ngx_uin
 		}
 	}
 
-	return NGX_CONF_OK; 
+	return NGX_CONF_OK;
 }
 
 static char *

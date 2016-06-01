@@ -33,7 +33,7 @@ typedef ngx_peer_addr_t ngx_statsd_addr_t;
 
 typedef struct {
     ngx_statsd_addr_t         peer_addr;
-    ngx_udp_connection_t      *udp_connection;
+    ngx_resolver_connection_t      *udp_connection;
     ngx_log_t                 *log;
 } ngx_udp_endpoint_t;
 
@@ -60,7 +60,7 @@ typedef struct {
 	ngx_array_t				*stats;
 } ngx_http_statsd_conf_t;
 
-ngx_int_t ngx_udp_connect(ngx_udp_connection_t *uc);
+ngx_int_t ngx_udp_connect(ngx_resolver_connection_t *rec);
 
 static void ngx_statsd_updater_cleanup(void *data);
 static ngx_int_t ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len);
@@ -300,7 +300,7 @@ ngx_http_statsd_handler(ngx_http_request_t *r)
 
 static ngx_int_t ngx_statsd_init_endpoint(ngx_conf_t *cf, ngx_udp_endpoint_t *endpoint) {
     ngx_pool_cleanup_t    *cln;
-    ngx_udp_connection_t  *uc;
+    ngx_resolver_connection_t  *rec;
 
 	ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cf->log, 0,
 			   "statsd: initting endpoint");
@@ -313,16 +313,16 @@ static ngx_int_t ngx_statsd_init_endpoint(ngx_conf_t *cf, ngx_udp_endpoint_t *en
     cln->handler = ngx_statsd_updater_cleanup;
     cln->data = endpoint;
 
-    uc = ngx_calloc(sizeof(ngx_udp_connection_t), cf->log);
-    if (uc == NULL) {
+    rec = ngx_calloc(sizeof(ngx_resolver_connection_t), cf->log);
+    if (rec == NULL) {
         return NGX_ERROR;
     }
 
-    endpoint->udp_connection = uc;
+    endpoint->udp_connection = rec;
 
-    uc->sockaddr = endpoint->peer_addr.sockaddr;
-    uc->socklen = endpoint->peer_addr.socklen;
-    uc->server = endpoint->peer_addr.name;
+    rec->sockaddr = endpoint->peer_addr.sockaddr;
+    rec->socklen = endpoint->peer_addr.socklen;
+    rec->server = endpoint->peer_addr.name;
 
     endpoint->log = &cf->cycle->new_log;
 
@@ -338,8 +338,8 @@ ngx_statsd_updater_cleanup(void *data)
                    "cleanup statsd_updater");
 
     if(e->udp_connection) {
-        if(e->udp_connection->connection) {
-            ngx_close_connection(e->udp_connection->connection);
+        if(e->udp_connection->udp) {
+            ngx_close_connection(e->udp_connection->udp);
         }
 
         ngx_free(e->udp_connection);
@@ -354,31 +354,31 @@ static ngx_int_t
 ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
 {
     ssize_t                n;
-    ngx_udp_connection_t  *uc;
+    ngx_resolver_connection_t  *rec;
 
-    uc = l->udp_connection;
-    if (uc->connection == NULL) {
+    rec = l->udp_connection;
+    if (rec->udp == NULL) {
 
-        uc->log = *l->log;
-        uc->log.handler = NULL;
-        uc->log.data = NULL;
-        uc->log.action = "logging";
+        rec->log = *l->log;
+        rec->log.handler = NULL;
+        rec->log.data = NULL;
+        rec->log.action = "logging";
 
-        if(ngx_udp_connect(uc) != NGX_OK) {
-            if(uc->connection != NULL) {
-                ngx_free_connection(uc->connection);
-                uc->connection = NULL;
+        if(ngx_udp_connect(rec) != NGX_OK) {
+            if(rec->udp != NULL) {
+                ngx_free_connection(rec->udp);
+                rec->udp = NULL;
             }
 
             return NGX_ERROR;
         }
 
-        uc->connection->data = l;
-        uc->connection->read->handler = ngx_http_statsd_udp_dummy_handler;
-        uc->connection->read->resolver = 0;
+        rec->udp->data = l;
+        rec->udp->read->handler = ngx_http_statsd_udp_dummy_handler;
+        rec->udp->read->resolver = 0;
     }
 
-    n = ngx_send(uc->connection, buf, len);
+    n = ngx_send(rec->udp, buf, len);
 
     if (n == -1) {
         return NGX_ERROR;
@@ -386,9 +386,9 @@ ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
 
     if ((size_t) n != (size_t) len) {
 #if defined nginx_version && nginx_version >= 8032
-        ngx_log_error(NGX_LOG_CRIT, &uc->log, 0, "send() incomplete");
+        ngx_log_error(NGX_LOG_CRIT, &rec->log, 0, "send() incomplete");
 #else
-        ngx_log_error(NGX_LOG_CRIT, uc->log, 0, "send() incomplete");
+        ngx_log_error(NGX_LOG_CRIT, rec->log, 0, "send() incomplete");
 #endif
         return NGX_ERROR;
     }

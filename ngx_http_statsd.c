@@ -528,6 +528,50 @@ ngx_http_statsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     return NGX_CONF_OK;
 }
 
+ngx_int_t
+ngx_cntm_set_statsd_server(ngx_url_t *target)
+{
+    ngx_http_statsd_main_conf_t    *umcf;
+    ngx_udp_endpoint_t *endpoint;
+    ngx_str_t server_name;
+    ngx_log_t *log = ngx_cycle->log;
+
+    umcf = ngx_http_cycle_get_module_main_conf(ngx_cycle, ngx_http_statsd_module);
+    if (umcf == NULL || umcf->endpoints == NULL) {
+        return NGX_OK;
+    }
+    
+    endpoint = (ngx_udp_endpoint_t *)umcf->endpoints->elts;
+   
+    if(ngx_memcmp(endpoint->peer_addr.sockaddr, &target->sockaddr, sizeof(struct sockaddr_in)) == 0) {
+        // No change in StatsD address
+        return NGX_OK;
+    }
+
+    if (endpoint->peer_addr.name.len != target->addrs[0].name.len) {
+        server_name.len = target->addrs[0].name.len;
+        server_name.data = ngx_calloc(server_name.len, log);
+        if(server_name.data == NULL) {
+            ngx_log_error(NGX_LOG_ERR, log, 0, "%s: Failed to update StatsD server info", __func__);
+            return NGX_ERROR;
+        }
+        ngx_free(endpoint->peer_addr.name.data);
+        endpoint->peer_addr.name = server_name;
+    }
+    ngx_memcpy(endpoint->peer_addr.sockaddr, &target->sockaddr, sizeof(struct sockaddr_in));
+    ngx_memcpy(endpoint->peer_addr.name.data, target->addrs[0].name.data, endpoint->peer_addr.name.len);
+
+    if(endpoint->udp_connection) {
+        endpoint->udp_connection->server = endpoint->peer_addr.name;
+        if(endpoint->udp_connection->udp) {
+            ngx_close_connection(endpoint->udp_connection->udp);
+            endpoint->udp_connection->udp = NULL;
+        }
+    }
+
+    return NGX_OK;
+}
+
 static char *
 ngx_http_statsd_add_stat(ngx_conf_t *cf, ngx_command_t *cmd, void *conf, ngx_uint_t type) {
     ngx_http_statsd_conf_t      		*ulcf = conf;

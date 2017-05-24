@@ -30,5 +30,4 @@ script:
   - ./configure --with-debug --add-module=../nginx-statsd
   - make
   - objs/nginx -V
-  - ldd objs/nginx | grep statsd
 

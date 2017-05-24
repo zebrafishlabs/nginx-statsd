@@ -32,8 +32,8 @@ install:
 script:
   - cd nginx-${X_NGINX_VERSION}
   - ./configure --with-debug --add-module=../nginx-statsd
-  - make > build.log 2>&1 || (cat build.log && exit 1)
-  - sudo make install > build.log 2>&1 || (cat build.log && exit 1)
+  - make
+  - sudo make install
   - nginx -V
   - ldd `which nginx`| grep statsd
 

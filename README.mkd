@@ -1,5 +1,6 @@
 nginx-statsd
 ============
+[![Build Status](https://travis-ci.org/trungtm/nginx-statsd.svg?branch=master)](https://travis-ci.org/trungtm/nginx-statsd)
 
 An nginx module for sending statistics to statsd.
 

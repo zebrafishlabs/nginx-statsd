@@ -60,7 +60,6 @@ typedef struct {
 	ngx_array_t				*stats;
 } ngx_http_statsd_conf_t;
 
-ngx_int_t ngx_udp_connect(ngx_resolver_connection_t *rec);
 
 static void ngx_statsd_updater_cleanup(void *data);
 static ngx_int_t ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len);
@@ -351,6 +350,89 @@ static void ngx_http_statsd_udp_dummy_handler(ngx_event_t *ev)
 }
 
 static ngx_int_t
+ngx_http_statsd_udp_connect(ngx_resolver_connection_t *rec)
+{
+    int                rc;
+    ngx_int_t          event;
+    ngx_event_t       *rev, *wev;
+    ngx_socket_t       s;
+    ngx_connection_t  *c;
+
+    s = ngx_socket(rec->sockaddr->sa_family, SOCK_DGRAM, 0);
+
+    ngx_log_debug1(NGX_LOG_DEBUG_EVENT, &rec->log, 0, "UDP socket %d", s);
+
+    if (s == (ngx_socket_t) -1) {
+        ngx_log_error(NGX_LOG_ALERT, &rec->log, ngx_socket_errno,
+                      ngx_socket_n " failed");
+        return NGX_ERROR;
+    }
+
+    c = ngx_get_connection(s, &rec->log);
+
+    if (c == NULL) {
+        if (ngx_close_socket(s) == -1) {
+            ngx_log_error(NGX_LOG_ALERT, &rec->log, ngx_socket_errno,
+                          ngx_close_socket_n "failed");
+        }
+
+        return NGX_ERROR;
+    }
+
+    if (ngx_nonblocking(s) == -1) {
+        ngx_log_error(NGX_LOG_ALERT, &rec->log, ngx_socket_errno,
+                      ngx_nonblocking_n " failed");
+
+        goto failed;
+    }
+
+    rev = c->read;
+    wev = c->write;
+
+    rev->log = &rec->log;
+    wev->log = &rec->log;
+
+    rec->udp = c;
+
+    c->number = ngx_atomic_fetch_add(ngx_connection_counter, 1);
+
+    ngx_log_debug3(NGX_LOG_DEBUG_EVENT, &rec->log, 0,
+                   "connect to %V, fd:%d #%uA", &rec->server, s, c->number);
+
+    rc = connect(s, rec->sockaddr, rec->socklen);
+
+    /* TODO: iocp */
+
+    if (rc == -1) {
+        ngx_log_error(NGX_LOG_CRIT, &rec->log, ngx_socket_errno,
+                      "connect() failed");
+
+        goto failed;
+    }
+
+    /* UDP sockets are always ready to write */
+    wev->ready = 1;
+
+    event = (ngx_event_flags & NGX_USE_CLEAR_EVENT) ?
+                /* kqueue, epoll */                 NGX_CLEAR_EVENT:
+                /* select, poll, /dev/poll */       NGX_LEVEL_EVENT;
+                /* eventport event type has no meaning: oneshot only */
+
+    if (ngx_add_event(rev, NGX_READ_EVENT, event) != NGX_OK) {
+        goto failed;
+    }
+
+    return NGX_OK;
+
+failed:
+
+    ngx_close_connection(c);
+    rec->udp = NULL;
+
+    return NGX_ERROR;
+}
+
+static ngx_int_t
 ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
 {
     ssize_t                n;
@@ -364,7 +446,7 @@ ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
         rec->log.data = NULL;
         rec->log.action = "logging";
 
-        if(ngx_udp_connect(rec) != NGX_OK) {
+        if(ngx_http_statsd_udp_connect(rec) != NGX_OK) {
             if(rec->udp != NULL) {
                 ngx_free_connection(rec->udp);
                 rec->udp = NULL;

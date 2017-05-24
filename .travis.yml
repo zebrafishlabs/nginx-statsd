@@ -1,8 +1,3 @@
-sudo: required
-dist: trusty
-
-os: linux
-
 language: c
 
 compilers:
@@ -17,6 +12,7 @@ env:
   # Previous stable
   - X_NGINX_VERSION=1.10.3
 
+sudo: false
 addons:
   apt:
     packages:
@@ -33,7 +29,6 @@ script:
   - cd nginx-${X_NGINX_VERSION}
   - ./configure --with-debug --add-module=../nginx-statsd
   - make
-  - sudo make install
-  - nginx -V
-  - ldd `which nginx`| grep statsd
+  - objs/nginx -V
+  - ldd objs/nginx | grep statsd
 

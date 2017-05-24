@@ -1,8 +1,14 @@
 sudo: required
+dist: trusty
+
+os: linux
+
 language: c
+
 compilers:
   - clang
   - gcc
+
 env:
   # Mainline
   - X_NGINX_VERSION=1.13.0
@@ -10,7 +16,7 @@ env:
   - X_NGINX_VERSION=1.12.0
   # Previous stable
   - X_NGINX_VERSION=1.10.3
-sudo: false
+
 addons:
   apt:
     packages:

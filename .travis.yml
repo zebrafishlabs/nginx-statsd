@@ -1,0 +1,32 @@
+language: c
+
+compilers:
+  - clang
+  - gcc
+
+env:
+  # Mainline
+  - X_NGINX_VERSION=1.13.0
+  # Stable
+  - X_NGINX_VERSION=1.12.0
+  # Previous stable
+  - X_NGINX_VERSION=1.10.3
+
+sudo: false
+addons:
+  apt:
+    packages:
+      - libpcre3-dev
+      - libssl-dev
+cache:
+  apt: true
+
+install:
+  - wget -O - http://nginx.org/download/nginx-${X_NGINX_VERSION}.tar.gz | tar -xzf -
+  - git clone https://github.com/trungtm/nginx-statsd
+
+script:
+  - cd nginx-${X_NGINX_VERSION}
+  - ./configure --with-debug --add-module=../nginx-statsd
+  - make
+  - objs/nginx -V

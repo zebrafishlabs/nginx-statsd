@@ -1,3 +1,4 @@
+sudo: required
 language: c
 compilers:
   - clang
@@ -15,9 +16,18 @@ addons:
     packages:
       - libpcre3-dev
       - libssl-dev
+cache:
+  apt: true
+
 install:
   - wget -O - http://nginx.org/download/nginx-${X_NGINX_VERSION}.tar.gz | tar -xzf -
-  - cd nginx-${X_NGINX_VERSION}
   - git clone https://github.com/trungtm/nginx-statsd
-  - ./configure --with-debug --add-module=./nginx-statsd
-  - make
+
+script:
+  - cd nginx-${X_NGINX_VERSION}
+  - ./configure --with-debug --add-module=../nginx-statsd
+  - make > build.log 2>&1 || (cat build.log && exit 1)
+  - sudo make install > build.log 2>&1 || (cat build.log && exit 1)
+  - nginx -V
+  - ldd `which nginx`| grep statsd
+

@@ -18,7 +18,12 @@
 #define STATSD_TYPE_COUNTER	0x0001
 #define STATSD_TYPE_TIMING  0x0002
 
-#define STATSD_MAX_STR 256
+/*
+ * Max StartsD message length = 1472
+ * - 1 ASCII character = 1 byte
+ * - 1 UDP packet payload = 1472 bytes ( 1500-20-8 )
+*/
+#define STATSD_MAX_STR 1472
 
 #define ngx_conf_merge_ptr_value(conf, prev, default)            		\
  	if (conf == NGX_CONF_UNSET_PTR) {                               	\
@@ -33,7 +38,7 @@ typedef ngx_peer_addr_t ngx_statsd_addr_t;
 
 typedef struct {
     ngx_statsd_addr_t         peer_addr;
-    ngx_resolver_connection_t *udp_connection;
+    ngx_resolver_connection_t      *udp_connection;
     ngx_log_t                 *log;
 } ngx_udp_endpoint_t;
 
@@ -60,7 +65,6 @@ typedef struct {
 	ngx_array_t				*stats;
 } ngx_http_statsd_conf_t;
 
-ngx_int_t ngx_udp_connect(ngx_resolver_connection_t *rec);
 
 static void ngx_statsd_updater_cleanup(void *data);
 static ngx_int_t ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len);
@@ -166,7 +170,7 @@ ngx_http_statsd_key_get_value(ngx_http_request_t *r, ngx_http_complex_value_t *c
 };
 
 static ngx_str_t
-ngx_http_statsd_key_value(ngx_str_t *value) 
+ngx_http_statsd_key_value(ngx_str_t *value)
 {
 	return *value;
 };
@@ -187,7 +191,7 @@ ngx_http_statsd_metric_get_value(ngx_http_request_t *r, ngx_http_complex_value_t
 };
 
 static ngx_uint_t
-ngx_http_statsd_metric_value(ngx_str_t *value) 
+ngx_http_statsd_metric_value(ngx_str_t *value)
 {
 	ngx_int_t n, m;
 
@@ -199,8 +203,8 @@ ngx_http_statsd_metric_value(ngx_str_t *value)
 	if (value->len > 4 && value->data[value->len - 4] == '.') {
 		n = ngx_atoi(value->data, value->len - 4);
 		m = ngx_atoi(value->data + (value->len - 3), 3);
-		return (ngx_uint_t) ((n * 1000) + m); 
-    	
+		return (ngx_uint_t) ((n * 1000) + m);
+
 	} else {
 		n = ngx_atoi(value->data, value->len);
 		if (n > 0) {
@@ -227,7 +231,7 @@ ngx_http_statsd_valid_get_value(ngx_http_request_t *r, ngx_http_complex_value_t 
 };
 
 static ngx_flag_t
-ngx_http_statsd_valid_value(ngx_str_t *value) 
+ngx_http_statsd_valid_value(ngx_str_t *value)
 {
 	return (ngx_flag_t) (value->len > 0 ? 1 : 0);
 };
@@ -272,7 +276,7 @@ ngx_http_statsd_handler(ngx_http_request_t *r)
 		b = ngx_http_statsd_valid_get_value(r, stat.cvalid, stat.valid);
 
 		if (b == 0 || s.len == 0 || n <= 0) {
-			// Do not log if not valid, key is invalid, or valud is lte 0. 
+			// Do not log if not valid, key is invalid, or valud is lte 0.
 			ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "statsd: no value to send");
          	continue;
 		};
@@ -351,6 +355,89 @@ static void ngx_http_statsd_udp_dummy_handler(ngx_event_t *ev)
 }
 
 static ngx_int_t
+ngx_http_statsd_udp_connect(ngx_resolver_connection_t *rec)
+{
+    int                rc;
+    ngx_int_t          event;
+    ngx_event_t       *rev, *wev;
+    ngx_socket_t       s;
+    ngx_connection_t  *c;
+
+    s = ngx_socket(rec->sockaddr->sa_family, SOCK_DGRAM, 0);
+
+    ngx_log_debug1(NGX_LOG_DEBUG_EVENT, &rec->log, 0, "UDP socket %d", s);
+
+    if (s == (ngx_socket_t) -1) {
+        ngx_log_error(NGX_LOG_ALERT, &rec->log, ngx_socket_errno,
+                      ngx_socket_n " failed");
+        return NGX_ERROR;
+    }
+
+    c = ngx_get_connection(s, &rec->log);
+
+    if (c == NULL) {
+        if (ngx_close_socket(s) == -1) {
+            ngx_log_error(NGX_LOG_ALERT, &rec->log, ngx_socket_errno,
+                          ngx_close_socket_n "failed");
+        }
+
+        return NGX_ERROR;
+    }
+
+    if (ngx_nonblocking(s) == -1) {
+        ngx_log_error(NGX_LOG_ALERT, &rec->log, ngx_socket_errno,
+                      ngx_nonblocking_n " failed");
+
+        goto failed;
+    }
+
+    rev = c->read;
+    wev = c->write;
+
+    rev->log = &rec->log;
+    wev->log = &rec->log;
+
+    rec->udp = c;
+
+    c->number = ngx_atomic_fetch_add(ngx_connection_counter, 1);
+
+    ngx_log_debug3(NGX_LOG_DEBUG_EVENT, &rec->log, 0,
+                   "connect to %V, fd:%d #%uA", &rec->server, s, c->number);
+
+    rc = connect(s, rec->sockaddr, rec->socklen);
+
+    /* TODO: iocp */
+
+    if (rc == -1) {
+        ngx_log_error(NGX_LOG_CRIT, &rec->log, ngx_socket_errno,
+                      "connect() failed");
+
+        goto failed;
+    }
+
+    /* UDP sockets are always ready to write */
+    wev->ready = 1;
+
+    event = (ngx_event_flags & NGX_USE_CLEAR_EVENT) ?
+                /* kqueue, epoll */                 NGX_CLEAR_EVENT:
+                /* select, poll, /dev/poll */       NGX_LEVEL_EVENT;
+                /* eventport event type has no meaning: oneshot only */
+
+    if (ngx_add_event(rev, NGX_READ_EVENT, event) != NGX_OK) {
+        goto failed;
+    }
+
+    return NGX_OK;
+
+failed:
+
+    ngx_close_connection(c);
+    rec->udp = NULL;
+
+    return NGX_ERROR;
+}
+
+static ngx_int_t
 ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
 {
     ssize_t                n;
@@ -364,7 +451,7 @@ ngx_http_statsd_udp_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
         rec->log.data = NULL;
         rec->log.action = "logging";
 
-        if(ngx_udp_connect(rec) != NGX_OK) {
+        if(ngx_http_statsd_udp_connect(rec) != NGX_OK) {
             if(rec->udp != NULL) {
                 ngx_free_connection(rec->udp);
                 rec->udp = NULL;
@@ -443,11 +530,11 @@ ngx_http_statsd_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
 	if (conf->stats == NULL) {
 		sz = (prev->stats != NULL ? prev->stats->nelts : 2);
-		conf->stats = ngx_array_create(cf->pool, sz, sizeof(ngx_statsd_stat_t)); 
+		conf->stats = ngx_array_create(cf->pool, sz, sizeof(ngx_statsd_stat_t));
 		if (conf->stats == NULL) {
         	return NGX_CONF_ERROR;
 		}
-	} 
+	}
 	if (prev->stats != NULL) {
 		prev_stats = prev->stats->elts;
 		for (i = 0; i < prev->stats->nelts; i++) {
@@ -474,6 +561,8 @@ ngx_http_statsd_add_endpoint(ngx_conf_t *cf, ngx_statsd_addr_t *peer_addr)
 {
     ngx_http_statsd_main_conf_t    *umcf;
     ngx_udp_endpoint_t             *endpoint;
+    ngx_str_t server_name;
+    ngx_log_t *log = cf->log;
 
     umcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_statsd_module);
 
@@ -490,6 +579,15 @@ ngx_http_statsd_add_endpoint(ngx_conf_t *cf, ngx_statsd_addr_t *peer_addr)
     }
 
     endpoint->peer_addr = *peer_addr;
+    
+    server_name.len = endpoint->peer_addr.name.len;
+    server_name.data = ngx_calloc(server_name.len, log);
+    if(server_name.data == NULL) {
+        ngx_log_error(NGX_LOG_ERR, log, 0, "%s: memory allocation failure", __func__);
+        return NULL;
+    }
+    ngx_memcpy(server_name.data, endpoint->peer_addr.name.data, server_name.len);
+    endpoint->peer_addr.name = server_name;
 
     return endpoint;
 }
@@ -526,6 +624,50 @@ ngx_http_statsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
 
     return NGX_CONF_OK;
+}
+
+ngx_int_t
+ngx_cntm_set_statsd_server(ngx_url_t *target)
+{
+    ngx_http_statsd_main_conf_t    *umcf;
+    ngx_udp_endpoint_t *endpoint;
+    ngx_str_t server_name;
+    ngx_log_t *log = ngx_cycle->log;
+
+    umcf = ngx_http_cycle_get_module_main_conf(ngx_cycle, ngx_http_statsd_module);
+    if (umcf == NULL || umcf->endpoints == NULL) {
+        return NGX_OK;
+    }
+    
+    endpoint = (ngx_udp_endpoint_t *)umcf->endpoints->elts;
+   
+    if(ngx_memcmp(endpoint->peer_addr.sockaddr, &target->sockaddr, sizeof(struct sockaddr_in)) == 0) {
+        // No change in StatsD address
+        return NGX_OK;
+    }
+
+    if (endpoint->peer_addr.name.len != target->addrs[0].name.len) {
+        server_name.len = target->addrs[0].name.len;
+        server_name.data = ngx_calloc(server_name.len, log);
+        if(server_name.data == NULL) {
+            ngx_log_error(NGX_LOG_ERR, log, 0, "%s: Failed to update StatsD server info", __func__);
+            return NGX_ERROR;
+        }
+        ngx_free(endpoint->peer_addr.name.data);
+        endpoint->peer_addr.name = server_name;
+    }
+    ngx_memcpy(endpoint->peer_addr.sockaddr, &target->sockaddr, sizeof(struct sockaddr_in));
+    ngx_memcpy(endpoint->peer_addr.name.data, target->addrs[0].name.data, endpoint->peer_addr.name.len);
+    
+    if(endpoint->udp_connection) {
+        endpoint->udp_connection->server = endpoint->peer_addr.name;
+        if(endpoint->udp_connection->udp) {
+            ngx_close_connection(endpoint->udp_connection->udp);
+            endpoint->udp_connection->udp = NULL;
+        }
+    }
+
+    return NGX_OK;
 }
 
 static char *
@@ -636,7 +778,7 @@ ngx_http_statsd_add_stat(ngx_conf_t *cf, ngx_command_t *cmd, void *conf, ngx_uin
 		}
 	}
 
-	return NGX_CONF_OK; 
+	return NGX_CONF_OK;
 }
 
 static char *
@@ -698,7 +840,7 @@ ngx_escape_statsd_key(u_char *dst, u_char *src, size_t size)
         0xffffffff, /* 1111 1111 1111 1111  1111 1111 1111 1111 */
 
                     /* ?>=< ;:98 7654 3210  /.-, +*)( '&%$ #"!  */
-		0xfc00bfff, /* 1111 1100 0000 0000  1011 1111 1111 1111 */
+		0xfc009fff, /* 1111 1100 0000 0000  1001 1111 1111 1111 */
 
                     /* _^]\ [ZYX WVUT SRQP  ONML KJIH GFED CBA@ */
 		0x78000001, /* 0111 1000 0000 0000  0000 0000 0000 0001 */
